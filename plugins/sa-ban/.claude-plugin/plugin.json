@@ -1,0 +1,8 @@
+{
+  "name": "sa-ban",
+  "version": "0.1.0",
+  "description": "Dựng sa bàn 3D bán hàng chung cư từ bảng hàng, tổng mặt bằng, mặt bằng tầng và layout căn. Claude đọc ảnh trong cuộc trò chuyện, script lo tính toán và xuất trình xem Three.js.",
+  "author": { "name": "Kha Nguyen" },
+  "license": "MIT",
+  "keywords": ["sa bàn", "bất động sản", "3D", "three.js", "mặt bằng tầng"]
+}
