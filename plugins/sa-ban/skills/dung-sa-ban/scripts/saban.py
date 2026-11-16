@@ -12,6 +12,7 @@ Lệnh:
   floor WD --tower ID --id FT --name TÊN --floors "12-22,24-33" --img ANH
   polys WD --tower ID --ft FT --json RANH.json [--approve]
   unittype WD --name LOẠI --spec spec.json [--photo ẢNH ...] [--approve]
+  look WD --json dien_mao.json [--img ẢNH_PHỐI_CẢNH ...]
   build WD --out THƯ_MỤC [--single]
   log WD --step BƯỚC --item MỤC [--images ẢNH ...] [--out-chars N] [--note ...]
   report WD
@@ -442,6 +443,28 @@ def cmd_unittype(a):
     print('Loại %s: spec %s, %d ảnh phối cảnh, trạng thái %s' % (a.name, ut.get('spec') or '-', len(ut.get('photos') or []), ut['status']))
 
 
+def cmd_look(a):
+    p = load(a.wd)
+    with open(a.json, encoding='utf-8') as f:
+        look = json.load(f)
+    hexok = lambda v: isinstance(v, str) and re.match(r'^#[0-9a-fA-F]{6}$', v)
+    bad = [k for k, v in list(look.items()) + [('podium.' + k, v) for k, v in (look.get('podium') or {}).items()]
+           if k.split('.')[-1] in ('glass', 'glassReflect', 'mullion', 'slab', 'wall', 'roof') and v is not None and not hexok(v)]
+    if bad:
+        sys.exit('Màu phải dạng #rrggbb: ' + ', '.join(bad))
+    p['config']['look'] = look
+    if look.get('glass'):
+        p['config']['glassColor'] = look['glass']
+    if (look.get('podium') or {}).get('floors') is not None:
+        p['config']['podiumFloors'] = look['podium']['floors']
+    if a.img:
+        p['lookFrom'] = [copy_in(a.wd, x, 'phoi_canh_tong_%d' % (i + 1)) for i, x in enumerate(a.img)]
+    save(a.wd, p)
+    print('Diện mạo: kính %s, khung %s, dải sàn %s, tường %s, mái %s; khối đế %s tầng (%s)' % (
+        look.get('glass'), look.get('mullion'), look.get('slab'), look.get('wall') or 'không (mặt kính)', look.get('roof'),
+        (look.get('podium') or {}).get('floors', p['config'].get('podiumFloors')), (look.get('podium') or {}).get('wall') or 'kính'))
+
+
 def cmd_status(a):
     p = load(a.wd)
     print('Dự án: %s (chế độ %s)' % (p['name'], p['mode']))
@@ -458,6 +481,8 @@ def cmd_status(a):
 
 def data_uri(path, max_side=2048, quality=82):
     from PIL import Image
+    if path.endswith('.webp'):
+        return 'data:image/webp;base64,' + base64.b64encode(open(path, 'rb').read()).decode()
     im = Image.open(path)
     has_alpha = im.mode in ('RGBA', 'LA') or (im.mode == 'P' and 'transparency' in im.info)
     s = min(1.0, max_side / max(im.size))
@@ -471,6 +496,47 @@ def data_uri(path, max_side=2048, quality=82):
         im.convert('RGB').save(buf, 'JPEG', quality=quality, optimize=True)
         mime = 'image/jpeg'
     return 'data:%s;base64,%s' % (mime, base64.b64encode(buf.getvalue()).decode())
+
+
+def footprint(wd, t, ft):
+    """Ranh khối nhà = các căn + hành lang/lõi kẹp giữa (đóng hình thái học), và ảnh mặt bằng đã bỏ nền ngoài khối."""
+    import numpy as np, cv2
+    from PIL import Image
+    W, H, mpp = ft['w'], ft['h'], ft['mPerPx']
+    s = min(1.0, 1600 / max(W, H))
+    m = np.zeros((int(H * s) + 1, int(W * s) + 1), np.uint8)
+    for u in ft['units']:
+        cv2.fillPoly(m, [np.array([[x * s, y * s] for x, y in u['poly']], np.int32)], 255)
+    px = lambda meters: max(1, int(round(meters / mpp * s)))
+    k = px(9)  # bắc cầu hành lang/lõi rộng tới ~9 m
+    pad = k + 2
+    m2 = cv2.copyMakeBorder(m, pad, pad, pad, pad, cv2.BORDER_CONSTANT, 0)
+    m2 = cv2.morphologyEx(m2, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k)))[pad:-pad, pad:-pad]
+    cs, _ = cv2.findContours(m2, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    fill = np.zeros_like(m)
+    cv2.drawContours(fill, cs, -1, 255, -1)
+    # đa giác lõi (lùi 0,4 m để không đè mặt đứng căn); chỉ lấy khối lớn nhất
+    def poly_of(mask, eps_m):
+        c2, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not c2:
+            return None
+        c = max(c2, key=cv2.contourArea)
+        c = cv2.approxPolyDP(c, max(1, eps_m / mpp * s), True)
+        return [[round(float(q[0][0]) / s, 1), round(float(q[0][1]) / s, 1)] for q in c] if len(c) >= 3 else None
+    fp = poly_of(fill, 0.25)
+    core = poly_of(cv2.erode(fill, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (px(0.8), px(0.8)))), 0.25)
+    # ảnh mặt bằng: ngoài khối (nới 0,8 m) trong suốt
+    alpha = cv2.dilate(fill, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (px(1.6), px(1.6))))
+    im = Image.open(os.path.join(wd, ft['file'])).convert('RGBA')
+    a_img = Image.fromarray(alpha).resize(im.size, Image.BILINEAR)
+    im.putalpha(a_img)
+    bb = a_img.getbbox()
+    out = os.path.join('work', 'plan_%s_%s.webp' % (t['id'], ft['id']))
+    sc = min(1.0, 2048 / max(im.size))
+    if sc < 1:
+        im = im.resize((int(im.size[0] * sc), int(im.size[1] * sc)), Image.LANCZOS)
+    im.save(os.path.join(wd, out), 'WEBP', quality=88)
+    return fp, core, out, bb
 
 
 def cmd_build(a):
@@ -495,8 +561,9 @@ def cmd_build(a):
         fts = []
         for ft in t['floorTypes']:
             if ft.get('units') and ft.get('mPerPx') and (ft.get('status') == 'approved' or auto):
-                fts.append(dict(id=ft['id'], name=ft['name'], floors=parse_floors(ft['floors']), img=url(ft.get('file')),
-                                w=ft['w'], h=ft['h'], mPerPx=ft['mPerPx'], units=ft['units']))
+                fp, core, plan_img, _ = footprint(a.wd, t, ft)
+                fts.append(dict(id=ft['id'], name=ft['name'], floors=parse_floors(ft['floors']), img=url(plan_img),
+                                w=ft['w'], h=ft['h'], mPerPx=ft['mPerPx'], units=ft['units'], footprint=fp, core=core))
             else:
                 warn.append('%s / %s: chưa duyệt hoặc thiếu ranh căn/tỷ lệ, bỏ qua' % (t['name'], ft.get('name')))
         towers.append(dict(id=t['id'], name=t['name'], x=t['x'], y=t['y'], rot=t.get('rot', 0), total=t['total'], floorTypes=fts))
@@ -600,6 +667,7 @@ def main():
     s.add_argument('--images', nargs='*'); s.add_argument('--in-chars', type=int, default=0); s.add_argument('--out-chars', type=int, default=0)
     s.add_argument('--note'); s.set_defaults(f=cmd_log)
     s = sp.add_parser('report'); s.add_argument('wd'); s.add_argument('--csv'); s.set_defaults(f=cmd_report)
+    s = sp.add_parser('look'); s.add_argument('wd'); s.add_argument('--json', required=True); s.add_argument('--img', nargs='*'); s.set_defaults(f=cmd_look)
     s = sp.add_parser('status'); s.add_argument('wd'); s.set_defaults(f=cmd_status)
     a = ap.parse_args()
     a.f(a)

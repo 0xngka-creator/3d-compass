@@ -8,7 +8,8 @@
 | Số tầng, cao tầng | Nên có | số | Không có thì dùng 3,3 m và ghi là ước lượng. |
 | Layout căn | Nên có | PDF vector từ CAD (tốt nhất) / ảnh có kích thước | Mỗi loại layout một bản. Ảnh không ghi kích thước thì cần biết tổng chiều rộng (mm). |
 | Ảnh phối cảnh căn mẫu | Tùy chọn | ảnh | Hiện trong popup căn hộ. |
-| Màu kính, hướng bắc | Tùy chọn | mô tả / hoa gió trên ảnh | Hướng bắc dùng cho mặt trời và hướng ban công. |
+| Ảnh phối cảnh tổng thể | Nên có | ảnh ban ngày, rõ mặt đứng | Claude tự lấy màu kính, khung, tường, mái, khối đế. |
+| Hướng bắc | Tùy chọn | hoa gió trên ảnh | Dùng cho mặt trời và hướng ban công. |
 
 Mẹo giảm lượt đọc ảnh (tiết kiệm hạn mức):
 - Ảnh mặt bằng tầng cắt sát khối nhà, bỏ bảng chú thích không liên quan, cạnh dài khoảng 1500–2500 px là đủ.
