@@ -11,6 +11,7 @@ Lệnh:
   tower WD --id ID --name TÊN --x PX --y PX --total SỐ_TẦNG [--rot ĐỘ]
   floor WD --tower ID --id FT --name TÊN --floors "12-22,24-33" --img ANH
   polys WD --tower ID --ft FT --json RANH.json [--approve]
+  cadfloor WD --tower ID --id FT --name TÊN [--floors ...] --dir KẾT_QUẢ_cad.py [--approve]
   unittype WD --name LOẠI --spec spec.json [--photo ẢNH ...] [--approve]
   look WD --json dien_mao.json [--img ẢNH_PHỐI_CẢNH ...]
   build WD --out THƯ_MỤC [--single]
@@ -422,6 +423,46 @@ def draw_overlay(src, units, dst, bad):
     im.save(dst)
 
 
+def cmd_cadfloor(a):
+    """Nạp kết quả cad.py extract (floor.json + plan.webp) làm một loại tầng."""
+    p = load(a.wd)
+    t = find_tower(p, a.tower)
+    f = json.load(open(os.path.join(a.dir, 'floor.json'), encoding='utf-8'))
+    ft = next((x for x in t['floorTypes'] if x['id'] == a.id), None)
+    if not ft:
+        ft = dict(id=a.id)
+        t['floorTypes'].append(ft)
+    plan = copy_in(a.wd, os.path.join(a.dir, 'plan.webp'), 'mat_bang_%s_%s' % (t['id'], a.id))
+    vecf = os.path.join('work', 'vec_%s_%s.json' % (t['id'], a.id))
+    os.makedirs(os.path.join(a.wd, 'work'), exist_ok=True)
+    json.dump({u['code']: dict(vec=u['vec'], rooms=u['rooms']) for u in f['units']}, open(os.path.join(a.wd, vecf), 'w', encoding='utf-8'), ensure_ascii=False)
+    ft.update(name=a.name, floors=a.floors or f.get('floors') or '', file=plan, w=f['w'], h=f['h'], mPerPx=f['mPerPx'],
+              scaleFrom='bản vẽ CAD tỷ lệ 1:%g' % f['scale'], cad=dict(source=f['source'], page=f['page'], footprint=f['footprint'], core=f['core'], vec=vecf),
+              units=[dict(code=u['code'], poly=u['poly']) for u in f['units']])
+    ref, first = floor_units(p, t, ft)
+    byc = {norm(u['code']): u for u in ref}
+    dev = []
+    for u in f['units']:
+        r = byc.get(norm(u['code']))
+        if r and r.get('area'):
+            d = (u['area'] - r['area']) / r['area']
+            if abs(d) > .12:
+                dev.append('%s: %.1f / bảng %.1f m² (%+.0f%%)' % (u['code'], u['area'], r['area'], d * 100))
+    codes = [u['code'] for u in ref]
+    got = {norm(u['code']) for u in f['units']}
+    ft['check'] = dict(unitsFound=len(f['units']), unitsInTable=len(codes), missing=[c for c in codes if norm(c) not in got],
+                       extra=[u['code'] for u in f['units'] if codes and norm(u['code']) not in byc], areaDeviation=dev, overlap=[])
+    ok = not ft['check']['missing'] and not ft['check']['extra'] and not dev
+    ft['status'] = 'approved' if (a.approve or (p['mode'] == 'auto' and ok and codes)) else 'review'
+    save(a.wd, p)
+    append_log(a.wd, dict(step='cad-floor', item='%s / %s' % (t['name'], a.name), kind='script', units=len(f['units'])))
+    print('Loại tầng %s / %s (tầng %s): %d căn từ CAD, %.3f m/px' % (t['name'], a.name, ft['floors'], len(f['units']), f['mPerPx']))
+    for k, v in ft['check'].items():
+        if isinstance(v, list) and v:
+            print('  %s: %s' % (k, '; '.join(v)))
+    print('Trạng thái: ' + ('đã duyệt' if ft['status'] == 'approved' else 'chờ duyệt'))
+
+
 def cmd_unittype(a):
     p = load(a.wd)
     ut = next((t for t in p['unitTypes'] if norm(t['name']) == norm(a.name)), None)
@@ -482,7 +523,13 @@ def cmd_status(a):
 def data_uri(path, max_side=2048, quality=82):
     from PIL import Image
     if path.endswith('.webp'):
-        return 'data:image/webp;base64,' + base64.b64encode(open(path, 'rb').read()).decode()
+        im = Image.open(path)
+        sc = min(1.0, max_side / max(im.size))
+        if sc < 1:
+            im = im.resize((int(im.size[0] * sc), int(im.size[1] * sc)), Image.LANCZOS)
+        buf = io.BytesIO()
+        im.save(buf, 'WEBP', quality=76, method=5)
+        return 'data:image/webp;base64,' + base64.b64encode(buf.getvalue()).decode()
     im = Image.open(path)
     has_alpha = im.mode in ('RGBA', 'LA') or (im.mode == 'P' and 'transparency' in im.info)
     s = min(1.0, max_side / max(im.size))
@@ -539,6 +586,30 @@ def footprint(wd, t, ft):
     return fp, core, out, bb
 
 
+def soft_masterplan(wd, mp):
+    """Làm mờ dần mép tổng mặt bằng và lấy màu nền đất từ dải mép ảnh để sa bàn liền với mặt đất tới chân trời."""
+    import numpy as np
+    from PIL import Image
+    im = Image.open(os.path.join(wd, mp['file'])).convert('RGB')
+    s = min(1.0, 3072 / max(im.size))
+    if s < 1:
+        im = im.resize((int(im.size[0] * s), int(im.size[1] * s)), Image.LANCZOS)
+    a = np.asarray(im).astype(np.float32)
+    h, w = a.shape[:2]
+    b = max(4, int(min(w, h) * 0.04))
+    edge = np.concatenate([a[:b].reshape(-1, 3), a[-b:].reshape(-1, 3), a[:, :b].reshape(-1, 3), a[:, -b:].reshape(-1, 3)])
+    col = np.median(edge, axis=0) * 0.85
+    ground = '#%02x%02x%02x' % tuple(int(max(0, min(255, c))) for c in col)
+    fx = np.minimum(np.arange(w), np.arange(w)[::-1]) / (w * 0.1)
+    fy = np.minimum(np.arange(h), np.arange(h)[::-1]) / (h * 0.1)
+    al = np.clip(np.minimum(fy[:, None], fx[None, :]), 0, 1)
+    al = (al * al * (3 - 2 * al) * 255).astype(np.uint8)
+    out = Image.fromarray(np.dstack([a.astype(np.uint8), al]), 'RGBA')
+    rel = os.path.join('work', 'tong_mat_bang_mem.webp')
+    out.save(os.path.join(wd, rel), 'WEBP', quality=85)
+    return rel, ground
+
+
 def cmd_build(a):
     t0 = time.time()
     p = load(a.wd)
@@ -560,7 +631,12 @@ def cmd_build(a):
     for t in p['towers']:
         fts = []
         for ft in t['floorTypes']:
-            if ft.get('units') and ft.get('mPerPx') and (ft.get('status') == 'approved' or auto):
+            if ft.get('cad') and (ft.get('status') == 'approved' or auto or not ft.get('units')):
+                vec = json.load(open(os.path.join(a.wd, ft['cad']['vec']), encoding='utf-8'))
+                us = [dict(u, **vec.get(u['code'], {})) for u in ft['units']]
+                fts.append(dict(id=ft['id'], name=ft['name'], floors=parse_floors(ft['floors']), img=url(ft['file']),
+                                w=ft['w'], h=ft['h'], mPerPx=ft['mPerPx'], units=us, footprint=ft['cad']['footprint'], core=ft['cad']['core']))
+            elif ft.get('units') and ft.get('mPerPx') and (ft.get('status') == 'approved' or auto):
                 fp, core, plan_img, _ = footprint(a.wd, t, ft)
                 fts.append(dict(id=ft['id'], name=ft['name'], floors=parse_floors(ft['floors']), img=url(plan_img),
                                 w=ft['w'], h=ft['h'], mPerPx=ft['mPerPx'], units=ft['units'], footprint=fp, core=core))
@@ -580,8 +656,12 @@ def cmd_build(a):
         with open(CATALOG, encoding='utf-8') as f:
             catalog = json.load(f)
     mp = p.get('masterplan')
-    scene = dict(id=norm(p['name'])[:24], name=p['name'], generatedAt=now(), config=p['config'], dataNote=p.get('dataNote', ''),
-                 masterplan=dict(img=url(mp['file']), w=mp['w'], h=mp['h'], mPerPx=mp['mPerPx']) if mp else None,
+    cfg = dict(p['config'])
+    mp_img = None
+    if mp:
+        mp_img, cfg['groundColor'] = soft_masterplan(a.wd, mp)
+    scene = dict(id=norm(p['name'])[:24], name=p['name'], generatedAt=now(), config=cfg, dataNote=p.get('dataNote', ''),
+                 masterplan=dict(img=url(mp_img), w=mp['w'], h=mp['h'], mPerPx=mp['mPerPx']) if mp else None,
                  towers=towers, units=p['units'], unitTypes=unit_types, catalog=catalog)
     with open(os.path.join(ASSETS, 'viewer.html'), encoding='utf-8') as f:
         html = f.read()
@@ -660,6 +740,8 @@ def main():
     s.add_argument('--name', required=True); s.add_argument('--floors', required=True); s.add_argument('--img', required=True); s.set_defaults(f=cmd_floor)
     s = sp.add_parser('polys'); s.add_argument('wd'); s.add_argument('--tower', required=True); s.add_argument('--ft', required=True)
     s.add_argument('--json', required=True); s.add_argument('--approve', action='store_true'); s.set_defaults(f=cmd_polys)
+    s = sp.add_parser('cadfloor'); s.add_argument('wd'); s.add_argument('--tower', required=True); s.add_argument('--id', required=True)
+    s.add_argument('--name', required=True); s.add_argument('--floors'); s.add_argument('--dir', required=True); s.add_argument('--approve', action='store_true'); s.set_defaults(f=cmd_cadfloor)
     s = sp.add_parser('unittype'); s.add_argument('wd'); s.add_argument('--name', required=True); s.add_argument('--spec')
     s.add_argument('--photo', nargs='*'); s.add_argument('--layout'); s.add_argument('--approve', action='store_true'); s.set_defaults(f=cmd_unittype)
     s = sp.add_parser('build'); s.add_argument('wd'); s.add_argument('--out', required=True); s.add_argument('--single', action='store_true'); s.set_defaults(f=cmd_build)

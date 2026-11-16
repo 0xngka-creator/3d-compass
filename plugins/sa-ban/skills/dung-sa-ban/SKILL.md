@@ -34,11 +34,15 @@ python3 scripts/saban.py tower WD --id l1 --name L1 --x <px> --y <px> --rot <đ�
 ## 2b. Diện mạo từ ảnh phối cảnh (tự động)
 Nếu có ảnh phối cảnh tổng thể, tự đọc màu kính, khung, dải sàn, tường, mái và khối đế rồi dựng luôn, không hỏi trước; làm theo `references/dien-mao.md`. Báo ngắn trong kết quả cuối những gì đã chọn để người dùng chỉnh qua chat. Không có ảnh thì dùng mặc định (kính tối, không khối đế).
 
-## 3. Số hóa mặt bằng tầng (Claude đọc ảnh)
+## 3. Số hóa mặt bằng tầng
+**Mặt bằng là PDF xuất từ AutoCAD (còn lớp):** đi đường CAD theo `references/cad.md`. Tường, phòng, căn, cửa, nội thất được tách bằng script, Claude chỉ xác định vai trò lớp một lần và kiểm tra cách gom căn. Chính xác hơn và tốn ít lượt đọc ảnh hơn nhiều so với đường ảnh. Chạy `python3 scripts/cad.py info <file.pdf>` trước để biết file có lớp hay không.
+
+**Mặt bằng là ảnh hoặc PDF scan:** đường ảnh dưới đây.
+
 Làm theo `references/so-hoa.md`. Tóm tắt: `floor` tạo ảnh lưới và in danh sách mã căn → Claude vẽ ranh căn ra file JSON toạ độ 0–1000 → `polys` kiểm tra (thiếu/thừa mã, lệch diện tích >15%, chồng nhau) và vẽ ảnh đối chiếu → sửa tối đa 2 vòng. Ở chế độ `review`, gửi ảnh đối chiếu cho người dùng duyệt rồi chạy lại `polys ... --approve`. Khi `build`, script tự suy ranh khối nhà (căn + hành lang + lõi), dựng lõi đặc và cắt bỏ nền giấy trắng ngoài khối nhà trên ảnh mặt bằng.
 
 ## 4. Layout căn hộ 3D (tùy chọn)
-Với mỗi loại layout có bản vẽ, dùng skill `layout-can-ho` để ra `spec.json`, rồi:
+Căn đi đường CAD đã có mô hình 3D, bỏ qua bước này. Với đường ảnh: mỗi loại layout có bản vẽ, dùng skill `layout-can-ho` để ra `spec.json`, rồi:
 ```bash
 python3 scripts/saban.py unittype WD --name 2BR --spec <spec.json> --layout <ảnh layout> --photo <ảnh phối cảnh ...>
 ```
