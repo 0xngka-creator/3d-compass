@@ -34,6 +34,7 @@ select,input{font:inherit;font-size:13px;color:var(--ink);background:#fff;border
 #utop{position:absolute;top:10px;right:12px;z-index:6;display:flex;gap:8px;align-items:center}
 #utop .x{border:0;background:#fff;width:34px;height:34px;border-radius:50%;font-size:20px;line-height:1;color:var(--muted);cursor:pointer}
 #ubar{position:absolute;left:0;right:0;bottom:10px;z-index:2;display:flex;gap:6px;justify-content:center;flex-wrap:wrap;padding:0 10px}
+#ucross{position:absolute;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;z-index:2;display:none;pointer-events:none;border-radius:50%;border:2px solid rgba(255,255,255,.9);box-shadow:0 0 0 1px rgba(0,0,0,.35)}
 #ujoy{position:absolute;left:22px;bottom:70px;z-index:3;width:96px;height:96px;border-radius:50%;background:rgba(20,24,28,.28);border:2px solid rgba(255,255,255,.6);display:none;touch-action:none}
 #ujoy i{position:absolute;left:30px;top:30px;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.85);transition:transform .05s}
 #uwalk{position:absolute;left:50%;transform:translateX(-50%);bottom:52px;z-index:2;font-size:12px;color:#fff;background:rgba(20,24,28,.62);padding:5px 10px;border-radius:14px;display:none;max-width:92%;text-align:center}
@@ -62,7 +63,7 @@ select,input{font:inherit;font-size:13px;color:var(--ink);background:#fff;border
     </div></div>
   <div class="ctl" id="bl"><div class="legend"><span><i class="dot" style="background:var(--avail)"></i>Còn trống</span><span><i class="dot" style="background:var(--hold)"></i>Giữ chỗ</span><span><i class="dot" style="background:var(--sold)"></i>Đã bán</span></div><div id="note"></div></div>
   <div id="tip"></div><div id="msg">Đang tải sa bàn…</div>
-  <div id="um"><div id="uv"></div><div id="uphoto"></div><div id="unote"></div><div id="ubar"></div><div id="uwalk">Kéo để nhìn quanh · bấm sàn hoặc chọn phòng để đi tới · ↑↓ hoặc W S: đi · ←→: quay người · A D: bước ngang · Shift: đi nhanh</div><div id="ujoy"><i></i></div>
+  <div id="um"><div id="uv"></div><div id="uphoto"></div><div id="unote"></div><div id="ubar"></div><div id="uwalk">Kéo để nhìn quanh · bấm sàn hoặc chọn phòng để đi tới · ↑↓ hoặc W S: đi · ←→: quay người · A D: bước ngang · Shift: đi nhanh</div><div id="ujoy"><i></i></div><div id="ucross"></div>
     <div id="utop"><button class="btn" id="uph" style="display:none">Ảnh phối cảnh</button><button class="btn pri" id="uib">Thông tin căn</button><button class="x" id="ux" aria-label="Đóng">×</button></div>
     <div id="uinfo"></div></div>
 </div>
@@ -422,7 +423,7 @@ function buildVecApt(U,ft){
    đầu nhún theo nhịp bước. Va chạm theo lưới (tường, kính, đồ nội thất), trượt dọc tường khi đi chéo. */
 var FP={on:false,yaw:0,pitch:-.05,pos:new THREE.Vector3(),vel:new THREE.Vector3(),phase:0,bob:0,path:null,endYaw:null,keys:{},joy:null,t:0,run:false},WRC=new THREE.Raycaster();
 var EYE=1.6,STEP=.72,WALK_V=1.25;
-function walkSet(on){FP.on=on;FP.path=null;FP.vel.set(0,0,0);$('#uwalk').style.display=on?'block':'none';$('#ujoy').style.display=on&&matchMedia('(pointer:coarse)').matches?'block':'none';if(APT){APT.ct.enabled=!on;}}
+function walkSet(on){FP.on=on;FP.path=null;FP.push=0;FP.vel.set(0,0,0);if(!on&&APT&&fpLocked())document.exitPointerLock();$('#uwalk').style.display=on?'block':'none';if(on)fpHint();else $('#ucross').style.display='none';$('#ujoy').style.display=on&&matchMedia('(pointer:coarse)').matches?'block':'none';if(APT){APT.ct.enabled=!on;}}
 function fpApply(){var A=APT,c=A.cam,b=FP.bob,r=Math.sin(FP.phase)*.012*FP.sway;c.rotation.order='YXZ';
   c.position.set(FP.pos.x+Math.cos(FP.yaw)*r,EYE+b,FP.pos.z-Math.sin(FP.yaw)*r);c.rotation.set(FP.pitch,FP.yaw,Math.sin(FP.phase)*.004*FP.sway);A.need=true;}
 function yawTo(dx,dz){return Math.atan2(-dx,-dz);}
@@ -446,7 +447,8 @@ function walkToPoint(x,z,endYaw){var p=findPath(FP.pos.x,FP.pos.z,x,z);if(!p||!p
 function fpStep(){var now=performance.now(),dt=Math.min(.1,(now-(FP.t||now))/1000);FP.t=now;if(!FP.on||!aptOn||APT.anim)return;
   var k=FP.keys,fw=(k.w||k.arrowup?1:0)-(k.s||k.arrowdown?1:0),st=(k.d?1:0)-(k.a?1:0),tr=(k.arrowleft?1:0)-(k.arrowright?1:0);
   if(FP.joy){fw+=-FP.joy.y;st+=FP.joy.x;}
-  if(fw||st||tr)FP.path=null;
+  if(FP.push){var pd=Math.sign(FP.push);fw+=pd;FP.push-=pd*Math.min(Math.abs(FP.push),WALK_V*dt);if(Math.abs(FP.push)<.01)FP.push=0;}
+  if((fw||st||tr)&&!FP.push)FP.path=null;
   FP.yaw+=tr*1.9*dt;
   var spd=WALK_V*(k.shift||FP.run?1.8:1);
   if(FP.path){var wp=FP.path[0],dx=wp[0]-FP.pos.x,dz=wp[1]-FP.pos.z,dist=Math.hypot(dx,dz);
@@ -456,7 +458,7 @@ function fpStep(){var now=performance.now(),dt=Math.min(.1,(now-(FP.t||now))/100
   var sy=Math.sin(FP.yaw),cy=Math.cos(FP.yaw),want=new THREE.Vector3(-sy*fw+cy*st,0,-cy*fw-sy*st);if(want.lengthSq()>1)want.normalize();want.multiplyScalar(spd);
   FP.vel.lerp(want,1-Math.exp(-9*dt));var mx=FP.vel.x*dt,mz=FP.vel.z*dt,moved=0;
   if(Math.abs(mx)+Math.abs(mz)>1e-5){if(freeAt(FP.pos.x+mx,FP.pos.z+mz)){FP.pos.x+=mx;FP.pos.z+=mz;moved=Math.hypot(mx,mz);}
-    else if(freeAt(FP.pos.x+mx,FP.pos.z)){FP.pos.x+=mx;moved=Math.abs(mx);FP.vel.z*=.5;}else if(freeAt(FP.pos.x,FP.pos.z+mz)){FP.pos.z+=mz;moved=Math.abs(mz);FP.vel.x*=.5;}else{FP.vel.set(0,0,0);if(FP.path)FP.path=null;}}
+    else if(freeAt(FP.pos.x+mx,FP.pos.z)){FP.pos.x+=mx;moved=Math.abs(mx);FP.vel.z*=.5;}else if(freeAt(FP.pos.x,FP.pos.z+mz)){FP.pos.z+=mz;moved=Math.abs(mz);FP.vel.x*=.5;}else{FP.vel.set(0,0,0);if(FP.path)FP.path=null;FP.push=0;}}
   var walking=moved/dt>.15;FP.sway+=((walking?1:0)-FP.sway)*Math.min(1,6*dt);FP.phase+=moved/STEP*Math.PI;
   FP.bob=(Math.abs(Math.sin(FP.phase))-.64)*.045*FP.sway;
   if(walking||tr||FP.endYaw!=null||FP.sway>.01||FP.dirty){FP.dirty=false;fpApply();}}
@@ -465,10 +467,23 @@ FP.sway=0;
 window.addEventListener('keydown',function(e){if(!aptOn||!FP.on||/input|select|textarea/i.test(e.target.tagName))return;var k=e.key.toLowerCase();if(['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright','shift'].indexOf(k)>=0){FP.keys[k]=1;e.preventDefault();}});
 window.addEventListener('keyup',function(e){delete FP.keys[e.key.toLowerCase()];});
 window.addEventListener('blur',function(){FP.keys={};});
-function fpPointer(cv){var down=null,last=null;
-  cv.addEventListener('pointerdown',function(e){if(!FP.on)return;down=[e.clientX,e.clientY];last=down;try{cv.setPointerCapture(e.pointerId);}catch(_){}});
-  cv.addEventListener('pointermove',function(e){if(!FP.on||!last)return;var dx=e.clientX-last[0],dy=e.clientY-last[1];last=[e.clientX,e.clientY];FP.yaw+=dx*.0042;FP.pitch=Math.max(-1.25,Math.min(1.25,FP.pitch+dy*.0035));FP.endYaw=null;fpApply();});
-  cv.addEventListener('pointerup',function(e){if(!FP.on||!down)return;var mv=Math.abs(e.clientX-down[0])+Math.abs(e.clientY-down[1]);down=last=null;if(mv<6)fpClick(e);});}
+function fpLocked(){return !!APT&&document.pointerLockElement===APT.rd.domElement;}
+function fpHint(){var h=$('#uwalk');if(!h)return;h.innerHTML=matchMedia('(pointer:coarse)').matches?'Kéo để quay người · chạm sàn hoặc chọn phòng để đi tới · cần điều khiển góc trái để đi':
+  fpLocked()?'Rê chuột để quay người · bấm chuột để đi tới chỗ tâm ngắm · lăn chuột để tiến/lùi · <b>Esc</b> để thả chuột':
+  'Bấm vào cảnh để điều khiển bằng chuột · hoặc kéo để quay người, bấm sàn để đi tới, lăn chuột để tiến/lùi';$('#ucross').style.display=fpLocked()?'block':'none';}
+document.addEventListener('pointerlockchange',function(){FP.lockT=performance.now();if(APT)fpHint();});
+function fpLook(dx,dy,k){FP.yaw-=dx*k;FP.pitch=Math.max(-1.25,Math.min(1.25,FP.pitch-dy*k*.85));FP.endYaw=null;fpApply();}
+function fpPointer(cv){var down=null,last=null,mouse=false;
+  cv.addEventListener('pointerdown',function(e){if(!FP.on)return;mouse=e.pointerType==='mouse';
+    if(fpLocked()){if(e.button===0)fpClickCenter();return;}
+    down=[e.clientX,e.clientY];last=down;try{cv.setPointerCapture(e.pointerId);}catch(_){}});
+  cv.addEventListener('pointermove',function(e){if(!FP.on)return;
+    if(fpLocked()){fpLook(e.movementX||0,e.movementY||0,.0024);return;}
+    if(!last)return;var dx=e.clientX-last[0],dy=e.clientY-last[1];last=[e.clientX,e.clientY];fpLook(dx,dy,.0045);});
+  cv.addEventListener('pointerup',function(e){if(!FP.on||!down)return;var mv=Math.abs(e.clientX-down[0])+Math.abs(e.clientY-down[1]);down=last=null;
+    if(mv<6){if(mouse&&!FP.noLock&&cv.requestPointerLock){try{var r=cv.requestPointerLock();if(r&&r.catch)r.catch(function(){FP.noLock=true;fpHint();});}catch(_){FP.noLock=true;}}fpClick(e);}});
+  cv.addEventListener('wheel',function(e){if(!FP.on)return;e.preventDefault();e.stopPropagation();var dy=e.deltaMode===1?e.deltaY*33:e.deltaY;FP.path=null;FP.push=Math.max(-3,Math.min(3,(FP.push||0)-dy*.006));},{passive:false});}
+function fpClickCenter(){var r=APT.rd.domElement.getBoundingClientRect();fpClick({clientX:r.left+r.width/2,clientY:r.top+r.height/2});}
 function fpClick(ev){var A=APT;if(!A.floorMeshes)return;var b=A.rd.domElement.getBoundingClientRect(),v=new THREE.Vector2((ev.clientX-b.left)/b.width*2-1,-(ev.clientY-b.top)/b.height*2+1);WRC.setFromCamera(v,A.cam);WRC.far=60;
   var h=WRC.intersectObjects(A.floorMeshes.concat(A.solid||[]),false)[0];if(!h||(A.solid||[]).indexOf(h.object)>=0)return;walkToPoint(h.point.x,h.point.z,null);}
 function fpJoy(el){var knob=el.firstChild,id=null,c=null;
@@ -509,7 +524,7 @@ function openUnit(m){
   var g=$('#ugo');if(g)g.onclick=function(){closeUnit();var i=towers.indexOf(m.userData.T);if(i!==st.tower){st.tower=i;$('#fTower').value=String(i);fillFloors();}setFloor(r.floor);};
 }
 function closeUnit(){$('#um').classList.remove('open');aptOn=false;walkSet(false);}
-$('#ux').onclick=closeUnit;$('#uib').onclick=function(){$('#uinfo').classList.toggle('open');};window.addEventListener('keydown',function(e){if(e.key==='Escape')closeUnit();});
+$('#ux').onclick=closeUnit;$('#uib').onclick=function(){$('#uinfo').classList.toggle('open');};window.addEventListener('keydown',function(e){if(e.key==='Escape'&&!fpLocked()&&performance.now()-(FP.lockT||0)>400)closeUnit();});
 
 /* ---------- vòng lặp ---------- */
 function resize(){need=true;renderer.setSize(stage.clientWidth,stage.clientHeight,false);camera.aspect=stage.clientWidth/stage.clientHeight;camera.updateProjectionMatrix();}
