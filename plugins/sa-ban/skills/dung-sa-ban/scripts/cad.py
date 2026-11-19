@@ -391,9 +391,16 @@ def cmd_extract(a):
         mk = u['mask']
         inner = np.isin(rlab, u['rooms']).astype(np.uint8) * 255
         wpoly = contours_to_polys(walls3d & mk, 1.0, px(.08) ** 2)
+        def pole(r):  # điểm giữa thoáng nhất của phòng (đặt camera)
+            x, y, w, h, _a = rstat[r]
+            dt = cv2.distanceTransform((rlab[y:y + h, x:x + w] == r).astype(np.uint8), cv2.DIST_L2, 3)
+            iy, ix = np.unravel_index(int(np.argmax(dt)), dt.shape)
+            return int(x + ix), int(y + iy)
+        poles = {r: pole(r) for r in u['rooms']}
         furn = []
         for layer_mask, h in ((fur, .45), (fur_t, .9)):
-            fm = cv2.morphologyEx(layer_mask & inner, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+            # nét nét đứt được xuất thành từng đoạn rời: nối lại bằng phép đóng 0,3 m, rồi lấp kín vùng bên trong
+            fm = cv2.morphologyEx(layer_mask & inner, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (px(.3), px(.3))))
             cs, _ = cv2.findContours(fm, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             for c in cs:
                 ar = cv2.contourArea(c) * mpp * mpp
@@ -403,18 +410,41 @@ def cmd_extract(a):
                 hh = h
                 if h < .5 and ar > 2.6 and min(bw, bh) * mpp > 1.3:
                     hh = .5   # giường
-                furn.append(dict(h=hh, p=cv2.approxPolyDP(c, 1.5, True)[:, 0, :].tolist()))
+                (rcx, rcy), (rw, rh), ang = cv2.minAreaRect(c)
+                if rw < rh:
+                    rw, rh, ang = rh, rw, ang + 90
+                M_ = cv2.moments(c)
+                fx, fy = int(M_['m10'] / M_['m00']), int(M_['m01'] / M_['m00'])
+                rid = int(rlab[min(H - 1, fy), min(W - 1, fx)])
+                if rid not in poles:  # tâm khối rơi ra ngoài phòng: lấy phòng chứa nhiều điểm nhất của khối
+                    cm = np.zeros(rlab.shape, np.uint8)
+                    cv2.drawContours(cm, [c], -1, 1, -1)
+                    ids, cnt = np.unique(rlab[cm > 0], return_counts=True)
+                    ok = [(n_, int(i_)) for i_, n_ in zip(ids, cnt) if int(i_) in poles]
+                    rid = max(ok)[1] if ok else 0
+                furn.append(dict(h=hh, p=cv2.approxPolyDP(c, 1.5, True)[:, 0, :].tolist(),
+                                 r=[round(rcx, 1), round(rcy, 1), round(rw * mpp, 2), round(rh * mpp, 2), round(ang, 1)],
+                                 fill=round(cv2.contourArea(c) / max(1, rw * rh), 2),
+                                 room=rooms[rid]['name'] if rid in rooms else '', rp=list(poles[rid]) if rid in poles else None))
         inside = lambda s: mk[min(H - 1, max(0, int((s[1] + s[3]) / 2))), min(W - 1, max(0, int((s[0] + s[2]) / 2)))] > 0
-        def pole(r):  # điểm giữa thoáng nhất của phòng (đặt camera)
-            x, y, w, h, _a = rstat[r]
-            dt = cv2.distanceTransform((rlab[y:y + h, x:x + w] == r).astype(np.uint8), cv2.DIST_L2, 3)
-            iy, ix = np.unravel_index(int(np.argmax(dt)), dt.shape)
-            return int(x + ix), int(y + iy)
         rms = []
         for r in u['rooms']:
-            vx, vy = pole(r)
+            vx, vy = poles[r]
+            rm = cv2.dilate((rlab == r).astype(np.uint8) * 255, cv2.getStructuringElement(cv2.MORPH_RECT, (px(.24), px(.24))))
+            rcs, _ = cv2.findContours(rm, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            rpoly = cv2.approxPolyDP(max(rcs, key=cv2.contourArea), 1.5, True)[:, 0, :].tolist() if rcs else []
+            best_a, best_d = 0.0, -1
+            for ang_ in np.linspace(0, 2 * math.pi, 24, endpoint=False):  # hướng nhìn thoáng nhất từ điểm đặt camera
+                d_ = 0
+                while d_ < px(15):
+                    xx, yy = int(vx + math.cos(ang_) * d_), int(vy + math.sin(ang_) * d_)
+                    if not (0 <= xx < W and 0 <= yy < H) or (rlab[yy, xx] != r and barrier[yy, xx]):
+                        break
+                    d_ += 2
+                if d_ > best_d:
+                    best_a, best_d = ang_, d_
             rms.append(dict(id=r, name=rooms[r]['name'], x=round(rooms[r].get('lx', rooms[r]['cx'])), y=round(rooms[r].get('ly', rooms[r]['cy'])),
-                            vx=vx, vy=vy, area=rooms[r]['area']))
+                            vx=vx, vy=vy, va=round(best_a, 3), area=rooms[r]['area'], poly=rpoly))
         out_units.append(dict(code=code, num=num, poly=u['poly'], area=u['area'], rooms=rms,
                               vec=dict(walls=wpoly, win=[s for s in win_segs if inside(s)], glass=[s for s in gla_segs if inside(s)], furn=furn)))
     # ranh khối nhà vẽ chung cho nhiều tầng: nếu lớn hơn hẳn diện tích sàn ghi trên bản vẽ (tầng giật cấp, sân thượng),

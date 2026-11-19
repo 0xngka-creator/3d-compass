@@ -155,7 +155,8 @@ COLS = dict(tower=['toa', 'block', 'tower', 'thap'], floor=['tang', 'floor', 'la
             area=['dttim', 'dientichtim', 'dttimtuong', 'gfa', 'dientich', 'dt'],
             netArea=['dttt', 'dtthongthuy', 'dientichthongthuy', 'nfa', 'thongthuy'],
             dir=['huong', 'huongbancong', 'direction', 'view'], price=['gia', 'giaban', 'price', 'tonggia'],
-            status=['trangthai', 'status', 'tinhtrang'], layout=['layout', 'mabang', 'mau', 'mauthietke'])
+            status=['trangthai', 'status', 'tinhtrang'], layout=['layout', 'mabang', 'mau', 'mauthietke'],
+            pos=['vitri', 'vt', 'pos', 'position', 'vitrican', 'socanmatbang'])
 STATUS = dict(avail=['controng', 'trong', 'conhang', 'available', 'mo', 'dangban', 'con'],
               hold=['giucho', 'datcoc', 'coc', 'hold', 'booking', 'reserved', 'dangiu', 'lock'],
               sold=['daban', 'ban', 'sold', 'dakyhd', 'hopdong'])
@@ -229,7 +230,7 @@ def cmd_units(a):
         units.append(dict(tower=str(g('tower') or '').strip(), floor=floor, code=str(code).strip(),
                           type=str(g('type') or '').strip(), area=num(g('area')), netArea=num(g('netArea')),
                           dir=str(g('dir') or '').strip(), price=num(g('price')), status=status,
-                          layout=str(g('layout') or g('type') or '').strip()))
+                          layout=str(g('layout') or g('type') or '').strip(), pos=str(g('pos') or '').strip()))
     p['units'] = units
     p['unitsFile'] = copy_in(a.wd, a.file, 'bang_hang')
     names = sorted({u['layout'] for u in units if u['layout']})
@@ -440,7 +441,8 @@ def cmd_cadfloor(a):
               scaleFrom='bản vẽ CAD tỷ lệ 1:%g' % f['scale'], cad=dict(source=f['source'], page=f['page'], footprint=f['footprint'], core=f['core'], vec=vecf),
               units=[dict(code=u['code'], poly=u['poly']) for u in f['units']])
     ref, first = floor_units(p, t, ft)
-    byc = {norm(u['code']): u for u in ref}
+    key = lambda u: u.get('pos') or u['code']  # cột Vị trí trong bảng hàng = số căn trên mặt bằng
+    byc = {norm(key(u)): u for u in ref}
     dev = []
     for u in f['units']:
         r = byc.get(norm(u['code']))
@@ -448,7 +450,7 @@ def cmd_cadfloor(a):
             d = (u['area'] - r['area']) / r['area']
             if abs(d) > .12:
                 dev.append('%s: %.1f / bảng %.1f m² (%+.0f%%)' % (u['code'], u['area'], r['area'], d * 100))
-    codes = [u['code'] for u in ref]
+    codes = [key(u) for u in ref]
     got = {norm(u['code']) for u in f['units']}
     ft['check'] = dict(unitsFound=len(f['units']), unitsInTable=len(codes), missing=[c for c in codes if norm(c) not in got],
                        extra=[u['code'] for u in f['units'] if codes and norm(u['code']) not in byc], areaDeviation=dev, overlap=[])
@@ -667,15 +669,35 @@ def cmd_build(a):
         html = f.read()
     three = open(os.path.join(ASSETS, 'three.min.js'), encoding='utf-8').read()
     orbit = open(os.path.join(ASSETS, 'OrbitControls.js'), encoding='utf-8').read()
+    has_vec = any(u.get('vec') for t in towers for ft in t['floorTypes'] for u in ft['units'])
+    idir = os.path.join(ASSETS, 'interior')
+    gltf = open(os.path.join(ASSETS, 'GLTFLoader.js'), encoding='utf-8').read() if has_vec else ''
+    interior = ''
+    if has_vec and a.single:
+        data = {}
+        for kind, mime in (('models', 'model/gltf-binary'), ('tex', 'image/webp')):
+            if not os.path.isdir(os.path.join(idir, kind)):
+                continue
+            for fn in sorted(os.listdir(os.path.join(idir, kind))):
+                if fn.endswith(('.glb', '.webp')):
+                    data[kind + '/' + fn] = 'data:%s;base64,%s' % (mime, base64.b64encode(open(os.path.join(idir, kind, fn), 'rb').read()).decode())
+        interior = '<script>window.INTERIOR=%s;</script>' % json.dumps(dict(data=data))
     if a.single:
-        inject = '<script>%s</script>\n<script>%s</script>\n<script>window.SCENE=%s;</script>' % (
-            three, orbit, json.dumps(scene, ensure_ascii=False).replace('</', '<\\/'))
+        inject = '<script>%s</script>\n<script>%s</script>\n%s<script>window.SCENE=%s;</script>' % (
+            three, orbit, ('<script>%s</script>\n%s\n' % (gltf, interior)) if has_vec else '',
+            json.dumps(scene, ensure_ascii=False).replace('</', '<\\/'))
     else:
         shutil.copyfile(os.path.join(ASSETS, 'three.min.js'), os.path.join(out, 'three.min.js'))
         shutil.copyfile(os.path.join(ASSETS, 'OrbitControls.js'), os.path.join(out, 'OrbitControls.js'))
         with open(os.path.join(out, 'scene.json'), 'w', encoding='utf-8') as f:
             json.dump(scene, f, ensure_ascii=False)
         inject = '<script src="three.min.js"></script>\n<script src="OrbitControls.js"></script>'
+        if has_vec:
+            shutil.copyfile(os.path.join(ASSETS, 'GLTFLoader.js'), os.path.join(out, 'GLTFLoader.js'))
+            if os.path.exists(os.path.join(out, 'interior')):
+                shutil.rmtree(os.path.join(out, 'interior'))
+            shutil.copytree(idir, os.path.join(out, 'interior'))
+            inject += '\n<script src="GLTFLoader.js"></script>\n<script>window.INTERIOR={base:"interior/"};</script>'
     html = html.replace('<!--SABAN_LIBS-->', inject)
     with open(os.path.join(out, 'index.html'), 'w', encoding='utf-8') as f:
         f.write(html)
