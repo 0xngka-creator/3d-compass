@@ -34,7 +34,9 @@ select,input{font:inherit;font-size:13px;color:var(--ink);background:#fff;border
 #utop{position:absolute;top:10px;right:12px;z-index:6;display:flex;gap:8px;align-items:center}
 #utop .x{border:0;background:#fff;width:34px;height:34px;border-radius:50%;font-size:20px;line-height:1;color:var(--muted);cursor:pointer}
 #ubar{position:absolute;left:0;right:0;bottom:10px;z-index:2;display:flex;gap:6px;justify-content:center;flex-wrap:wrap;padding:0 10px}
-#uwalk{position:absolute;left:50%;transform:translateX(-50%);bottom:52px;z-index:2;font-size:12px;color:#fff;background:rgba(20,24,28,.62);padding:5px 10px;border-radius:14px;display:none;white-space:nowrap}
+#ujoy{position:absolute;left:22px;bottom:70px;z-index:3;width:96px;height:96px;border-radius:50%;background:rgba(20,24,28,.28);border:2px solid rgba(255,255,255,.6);display:none;touch-action:none}
+#ujoy i{position:absolute;left:30px;top:30px;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.85);transition:transform .05s}
+#uwalk{position:absolute;left:50%;transform:translateX(-50%);bottom:52px;z-index:2;font-size:12px;color:#fff;background:rgba(20,24,28,.62);padding:5px 10px;border-radius:14px;display:none;max-width:92%;text-align:center}
 #ubar .btn.on{background:var(--accent);border-color:var(--accent);color:#fff}
 #unote{position:absolute;left:12px;top:10px;z-index:2;font-size:11px;color:var(--muted);background:rgba(255,255,255,.9);padding:3px 8px;border-radius:4px;max-width:45%}
 #uinfo{display:none;position:absolute;top:56px;right:12px;bottom:12px;width:min(340px,calc(100% - 24px));background:#fff;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.3);z-index:5;overflow-y:auto;padding:20px 22px}
@@ -60,7 +62,7 @@ select,input{font:inherit;font-size:13px;color:var(--ink);background:#fff;border
     </div></div>
   <div class="ctl" id="bl"><div class="legend"><span><i class="dot" style="background:var(--avail)"></i>Còn trống</span><span><i class="dot" style="background:var(--hold)"></i>Giữ chỗ</span><span><i class="dot" style="background:var(--sold)"></i>Đã bán</span></div><div id="note"></div></div>
   <div id="tip"></div><div id="msg">Đang tải sa bàn…</div>
-  <div id="um"><div id="uv"></div><div id="uphoto"></div><div id="unote"></div><div id="ubar"></div><div id="uwalk">Kéo để nhìn quanh · bấm vào sàn để đi tới · W A S D / phím mũi tên để đi</div>
+  <div id="um"><div id="uv"></div><div id="uphoto"></div><div id="unote"></div><div id="ubar"></div><div id="uwalk">Kéo để nhìn quanh · bấm sàn hoặc chọn phòng để đi tới · ↑↓ hoặc W S: đi · ←→: quay người · A D: bước ngang · Shift: đi nhanh</div><div id="ujoy"><i></i></div>
     <div id="utop"><button class="btn" id="uph" style="display:none">Ảnh phối cảnh</button><button class="btn pri" id="uib">Thông tin căn</button><button class="x" id="ux" aria-label="Đóng">×</button></div>
     <div id="uinfo"></div></div>
 </div>
@@ -290,18 +292,18 @@ function initApt(){
   sc.add(new THREE.HemisphereLight(0xffffff,0x8a7a66,1.0));var sl=new THREE.DirectionalLight(0xfff0dc,1.2);sl.castShadow=true;sl.shadow.mapSize.set(2048,2048);sc.add(sl);sc.add(sl.target);
   var root=new THREE.Group();sc.add(root);
   APT={rd:rd,sc:sc,cam:cam,ct:ct,root:root,sl:sl,need:true,anim:null,ceil:null};
-  var wd=null;rd.domElement.addEventListener('pointerdown',function(e){wd=[e.clientX,e.clientY];});rd.domElement.addEventListener('pointerup',function(e){if(wd&&Math.abs(e.clientX-wd[0])+Math.abs(e.clientY-wd[1])<6)walkTo(e);wd=null;});ct.addEventListener('change',function(){APT.need=true;});
+  fpPointer(rd.domElement);fpJoy($('#ujoy'));ct.addEventListener('change',function(){APT.need=true;});
   window.addEventListener('resize',aptSize);
   (function loop(){requestAnimationFrame(loop);if(!aptOn)return;var A=APT;
-    walkStep();
-    if(A.anim){var k=Math.min(1,(performance.now()-A.anim.s)/(A.anim.dur||900)),e=k*k*(3-2*k);cam.position.lerpVectors(A.anim.p0,A.anim.p1,e);ct.target.lerpVectors(A.anim.t0,A.anim.t1,e);cam.lookAt(ct.target);if(k>=1){aptLimits(A.anim.fp);A.anim=null;}A.need=true;}else ct.update();
+    fpStep();
+    if(A.anim){var k=Math.min(1,(performance.now()-A.anim.s)/(A.anim.dur||900)),e=k*k*(3-2*k);cam.position.lerpVectors(A.anim.p0,A.anim.p1,e);ct.target.lerpVectors(A.anim.t0,A.anim.t1,e);cam.lookAt(ct.target);if(k>=1){var an=A.anim;A.anim=null;if(an.fp)fpEnter([an.p1.x,0,an.p1.z],[an.t1.x,0,an.t1.z]);else{walkSet(false);aptLimits(false);}}A.need=true;}else if(!FP.on)ct.update();
     if(A.need){A.need=false;rd.render(sc,cam);}})();
 }
 function aptSize(){if(!aptOn)return;var h=$('#uv');APT.rd.setSize(h.clientWidth,h.clientHeight,false);APT.cam.aspect=h.clientWidth/h.clientHeight;APT.cam.updateProjectionMatrix();APT.need=true;}
 function aptLimits(fp){var c=APT.ct;c.enabled=true;c.enableZoom=!fp;c.rotateSpeed=fp?-.4:.8;c.minDistance=fp?.05:3;c.maxDistance=fp?.05:60;c.minPolarAngle=fp?Math.PI*.2:0;c.maxPolarAngle=fp?Math.PI*.8:Math.PI*.47;}
 function lin(hex){return new THREE.Color(hex).convertSRGBToLinear();}
 function buildApt(spec){
-  var A=APT,root=A.root;A.solid=[];A.floorMeshes=[];while(root.children.length)root.remove(root.children[0]);
+  var A=APT,root=A.root;A.solid=[];A.floorMeshes=[];A.nav=null;A.entry=null;while(root.children.length)root.remove(root.children[0]);
   var H=(spec.height||2800)/1000,wallM=std({color:lin(0xe7dccb),roughness:.95}),capM=std({color:lin(0x9c8f7f),roughness:.9}),mats=[wallM,wallM,capM,wallM,wallM,wallM];
   var bb=[1e9,1e9,-1e9,-1e9];
   function box(x0,z0,x1,z1,y0,y1,m,rot,cx,cz){var g=new THREE.Mesh(new THREE.BoxGeometry(x1-x0,y1-y0,z1-z0),m);g.position.set(cx!=null?cx:(x0+x1)/2,(y0+y1)/2,cz!=null?cz:(z0+z1)/2);if(rot)g.rotation.y=rot;g.castShadow=true;g.receiveShadow=true;root.add(g);return g;}
@@ -378,7 +380,7 @@ function buildVecApt(U,ft){
   function shp(pl){var s=new THREE.Shape();pl.o.forEach(function(q,i){i?s.lineTo(q[0]*k,-q[1]*k):s.moveTo(q[0]*k,-q[1]*k);});(pl.h||[]).forEach(function(h){var pa=new THREE.Path();h.forEach(function(q,i){i?pa.lineTo(q[0]*k,-q[1]*k):pa.moveTo(q[0]*k,-q[1]*k);});s.holes.push(pa);});return s;}
   function ex(s,h,y0,m){var g=new THREE.ExtrudeGeometry(s,{depth:h,bevelEnabled:false});g.rotateX(-Math.PI/2);var o=new THREE.Mesh(g,m);o.position.y=y0||0;o.castShadow=o.receiveShadow=true;root.add(o);return o;}
   var xs=U.poly.map(function(q){return q[0]*k;}),zs=U.poly.map(function(q){return q[1]*k;}),x0=Math.min.apply(0,xs),x1=Math.max.apply(0,xs),z0=Math.min.apply(0,zs),z1=Math.max.apply(0,zs),cx=(x0+x1)/2,cz=(z0+z1)/2,W=x1-x0,D=z1-z0;
-  var fl=new THREE.Mesh(new THREE.ShapeGeometry(shp({o:U.poly})),std({color:lin(0xd9d3c8),roughness:.8}));fl.geometry.rotateX(-Math.PI/2);fl.receiveShadow=true;root.add(fl);A.solid=[];A.floorMeshes=[fl];
+  var fl=new THREE.Mesh(new THREE.ShapeGeometry(shp({o:U.poly})),std({color:lin(0xd9d3c8),roughness:.8}));fl.geometry.rotateX(-Math.PI/2);fl.receiveShadow=true;root.add(fl);A.solid=[];A.floorMeshes=[fl];A.entry=null;A.nav=null;
   var FT={bed:['go',1.6],liv:['gach',1.2],kit:['gach',1.2],wc:['gach-xam',.9],logia:['da',1.4],store:['go',1.6],other:['gach',1.2]},FC={bed:0xd6cab8,liv:0xe2ddd5,kit:0xe2ddd5,wc:0xcfd1d0,logia:0xc4c2bd,store:0xd6cab8,other:0xe2ddd5},flm={};
   (U.rooms||[]).forEach(function(r){if(!r.poly||r.poly.length<3)return;var kd=roomKind(r.name),ft_=FT[kd],tx=getTex(ft_[0]);var key=kd;
     if(!flm[key]){if(tx){flm[key]=std({map:tx,roughness:kd==='bed'?.6:.35});}else flm[key]=std({color:lin(FC[kd]),roughness:.7});}
@@ -401,25 +403,81 @@ function buildVecApt(U,ft){
       var th=Math.atan2(fx,fz)+it.yaw;o.rotation.y=th;o.scale.set(sw/sz.x,it.h/sz.y,sd/sz.z);o.position.set(wx,.01+(it.y0||0),wz);root.add(o);A.need=true;});});});
   var cg=new THREE.ShapeGeometry(shp({o:U.poly}));cg.rotateX(-Math.PI/2);A.ceil=new THREE.Mesh(cg,std({color:lin(0xf4f2ee),roughness:1,side:THREE.DoubleSide}));A.ceil.position.y=H;A.ceil.visible=false;root.add(A.ceil);
   A.sl.position.set(cx-W*.4,14,cz-D*.6);A.sl.target.position.set(cx,0,cz);(function(c){var r=Math.max(W,D)*.8+2;c.left=-r;c.right=r;c.top=r;c.bottom=-r;c.near=1;c.far=60;c.updateProjectionMatrix();})(A.sl.shadow.camera);
+  // lưới đi lại 10 cm: sàn căn trừ tường, kính, nội thất; chừa 0,25 m quanh vật cản
+  (function(){var res=.1,gw=Math.ceil(W/res)+4,gh=Math.ceil(D/res)+4,ox=x0-res*2,oz=z0-res*2,c=document.createElement('canvas');c.width=gw;c.height=gh;var g=c.getContext('2d');
+    var P=function(q){return [(q[0]*k-ox)/res,(q[1]*k-oz)/res];};function poly(pts,fill){g.beginPath();pts.forEach(function(q,i){var p=P(q);i?g.lineTo(p[0],p[1]):g.moveTo(p[0],p[1]);});g.closePath();g.fillStyle=fill;g.fill();}
+    g.fillStyle='#000';g.fillRect(0,0,gw,gh);poly(U.poly,'#fff');v.walls.forEach(function(w){poly(w.o,'#000');});(v.furn||[]).forEach(function(f){poly(f.p,'#000');});
+    // kính và cửa sổ không chặn: kính ra lô gia thường là cửa trượt; mặt ngoài đã được ranh căn chặn
+    var d=g.getImageData(0,0,gw,gh).data,f=new Uint8Array(gw*gh);for(var i=0;i<gw*gh;i++)f[i]=d[i*4]>128?1:0;
+    for(var it=0;it<2;it++){var n=f.slice();for(var y=0;y<gh;y++)for(var x=0;x<gw;x++){var i2=y*gw+x;if(!f[i2])continue;if(x<1||y<1||x>=gw-1||y>=gh-1||!f[i2-1]||!f[i2+1]||!f[i2-gw]||!f[i2+gw]||!f[i2-gw-1]||!f[i2-gw+1]||!f[i2+gw-1]||!f[i2+gw+1])n[i2]=0;}f=n;}
+    A.nav={x0:ox,z0:oz,res:res,w:gw,h:gh,free:f};})();
   var views=[{n:'Toàn cảnh',p:[cx,Math.max(W,D)*1.05+3,cz+D*.5+Math.max(W,D)*.75],l:[cx,0,cz]}],seen={};
   (U.rooms||[]).forEach(function(r){var n=(r.name||'').split(' / ')[0];if(!n||seen[n]||/^(WC|KHO|THAY ĐỒ)$|CỬA/.test(n))return;seen[n]=1;var x=(r.vx!=null?r.vx:r.x)*k,z=(r.vy!=null?r.vy:r.y)*k;var best=null,bd=9;(v.win||[]).concat(v.glass||[]).forEach(function(q){var mx=(q[0]+q[2])/2*k,mz=(q[1]+q[3])/2*k,d=Math.hypot(mx-x,mz-z);if(d<bd&&d>.8){bd=d;best=[mx,1.4,mz];}});
-    if(r.va!=null)best=[x+Math.cos(r.va)*3,1.35,z+Math.sin(r.va)*3];views.push({n:n.charAt(0)+n.slice(1).toLowerCase(),fp:1,p:[x,1.6,z],l:best||[cx,1.3,cz]});});
+    if(r.va!=null)best=[x+Math.cos(r.va)*3,1.35,z+Math.sin(r.va)*3];var pri=/S[ẢA]NH/.test(n)?4:/KH[ÁA]CH/.test(n)?3:/(ĂN|BẾP)/.test(n)?2:/NG[ỦU]/.test(n)?1:0;if(pri&&(!A.entry||pri>A.entry.pri))A.entry={pri:pri,p:[x,1.6,z],l:best||[cx,1.3,cz]};views.push({n:n.charAt(0)+n.slice(1).toLowerCase(),fp:1,p:[x,1.6,z],l:best||[cx,1.3,cz]});});
   return views;
 }
-/* ---------- đi bộ trong căn (góc nhìn người) ---------- */
-var WALK={keys:{},t:0,on:false},WRC=new THREE.Raycaster();
-function walkSet(on){WALK.on=on;$('#uwalk').style.display=on?'block':'none';}
-function blocked(from,dir,dist){var A=APT;if(!A.solid||!A.solid.length)return dist;WRC.set(from,dir);WRC.far=dist+.35;var h=WRC.intersectObjects(A.solid,false)[0];return h?Math.max(0,h.distance-.35):dist;}
-function walkMove(dx,dz){var A=APT,cam=A.cam,ct=A.ct,f=new THREE.Vector3();cam.getWorldDirection(f);f.y=0;if(f.lengthSq()<1e-6)return;f.normalize();var r=new THREE.Vector3(-f.z,0,f.x),mv=f.multiplyScalar(dz).add(r.multiplyScalar(dx)),L=mv.length();if(L<1e-6)return;
-  mv.divideScalar(L);var o=cam.position.clone();o.y=1.0;var ok=blocked(o,mv,L);if(ok<=1e-3)return;mv.multiplyScalar(ok);cam.position.add(mv);ct.target.add(mv);A.need=true;}
-function walkStep(){var now=performance.now(),dt=Math.min(.05,(now-(WALK.t||now))/1000);WALK.t=now;if(!WALK.on||!aptOn||APT.anim)return;var k=WALK.keys,sp=1.6*dt,dz=0,dx=0;
-  if(k.w||k.arrowup)dz+=sp;if(k.s||k.arrowdown)dz-=sp;if(k.a||k.arrowleft)dx-=sp;if(k.d||k.arrowright)dx+=sp;if(dx||dz)walkMove(dx,dz);}
-window.addEventListener('keydown',function(e){if(!aptOn||!WALK.on||/input|select|textarea/i.test(e.target.tagName))return;var k=e.key.toLowerCase();if('wasd'.indexOf(k)>=0&&k.length===1||k.indexOf('arrow')===0){WALK.keys[k]=1;e.preventDefault();}});
-window.addEventListener('keyup',function(e){delete WALK.keys[e.key.toLowerCase()];});
-function walkTo(ev){var A=APT;if(!WALK.on||!A.floorMeshes)return;var b=A.rd.domElement.getBoundingClientRect(),v=new THREE.Vector2((ev.clientX-b.left)/b.width*2-1,-(ev.clientY-b.top)/b.height*2+1);WRC.setFromCamera(v,A.cam);WRC.far=60;
-  var h=WRC.intersectObjects(A.floorMeshes.concat(A.solid||[]),false)[0];if(!h||A.solid.indexOf(h.object)>=0)return;var p=h.point,o=A.cam.position.clone();o.y=1.0;var d=new THREE.Vector3(p.x-o.x,0,p.z-o.z),L=d.length();if(L<.2)return;d.divideScalar(L);
-  var go=blocked(o,d,L);if(go<.2)return;var p1=A.cam.position.clone().addScaledVector(d,go);p1.y=1.6;var f=new THREE.Vector3();A.cam.getWorldDirection(f);
-  A.ct.enabled=false;A.anim={p0:A.cam.position.clone(),t0:A.ct.target.clone(),p1:p1,t1:p1.clone().addScaledVector(f,.05),s:performance.now(),fp:true,dur:Math.min(2200,400+go*350)};}
+/* ---------- đi bộ trong căn (góc nhìn người) ----------
+   Người đứng ở FP.pos, mắt cao 1,6 m, nhìn theo FP.yaw/FP.pitch. Đi bằng phím, cần điều khiển trên điện thoại,
+   hoặc bấm sàn / chọn phòng: tìm đường qua cửa trên lưới 10 cm (A*), quay người về hướng đi rồi bước tới,
+   đầu nhún theo nhịp bước. Va chạm theo lưới (tường, kính, đồ nội thất), trượt dọc tường khi đi chéo. */
+var FP={on:false,yaw:0,pitch:-.05,pos:new THREE.Vector3(),vel:new THREE.Vector3(),phase:0,bob:0,path:null,endYaw:null,keys:{},joy:null,t:0,run:false},WRC=new THREE.Raycaster();
+var EYE=1.6,STEP=.72,WALK_V=1.25;
+function walkSet(on){FP.on=on;FP.path=null;FP.vel.set(0,0,0);$('#uwalk').style.display=on?'block':'none';$('#ujoy').style.display=on&&matchMedia('(pointer:coarse)').matches?'block':'none';if(APT){APT.ct.enabled=!on;}}
+function fpApply(){var A=APT,c=A.cam,b=FP.bob,r=Math.sin(FP.phase)*.012*FP.sway;c.rotation.order='YXZ';
+  c.position.set(FP.pos.x+Math.cos(FP.yaw)*r,EYE+b,FP.pos.z-Math.sin(FP.yaw)*r);c.rotation.set(FP.pitch,FP.yaw,Math.sin(FP.phase)*.004*FP.sway);A.need=true;}
+function yawTo(dx,dz){return Math.atan2(-dx,-dz);}
+function angDiff(a,b){var d=(b-a)%(Math.PI*2);if(d>Math.PI)d-=Math.PI*2;if(d<-Math.PI)d+=Math.PI*2;return d;}
+/* lưới đi lại */
+function navCell(x,z){var N=APT.nav;return [Math.floor((x-N.x0)/N.res),Math.floor((z-N.z0)/N.res)];}
+function navFree(i,j){var N=APT.nav;return i>=0&&j>=0&&i<N.w&&j<N.h&&N.free[j*N.w+i]===1;}
+function freeAt(x,z){if(!APT.nav)return true;var c=navCell(x,z);return navFree(c[0],c[1]);}
+function nearestFree(i,j){var N=APT.nav;if(navFree(i,j))return [i,j];for(var r=1;r<40;r++)for(var di=-r;di<=r;di++)for(var dj=-r;dj<=r;dj++){if(Math.max(Math.abs(di),Math.abs(dj))!==r)continue;if(navFree(i+di,j+dj))return [i+di,j+dj];}return null;}
+function los(a,b){var n=Math.ceil(Math.max(Math.abs(b[0]-a[0]),Math.abs(b[1]-a[1])));for(var t=0;t<=n;t++){var i=Math.round(a[0]+(b[0]-a[0])*t/(n||1)),j=Math.round(a[1]+(b[1]-a[1])*t/(n||1));if(!navFree(i,j))return false;}return true;}
+function findPath(x0,z0,x1,z1){var N=APT.nav;if(!N)return [[x1,z1]];var s=nearestFree.apply(0,navCell(x0,z0)),g=nearestFree.apply(0,navCell(x1,z1));if(!s||!g)return null;
+  var W=N.w,H=N.h,G=new Float32Array(W*H).fill(1e9),from=new Int32Array(W*H).fill(-1),open=[],closed=new Uint8Array(W*H),si=s[1]*W+s[0],gi=g[1]*W+g[0];G[si]=0;open.push([Math.hypot(g[0]-s[0],g[1]-s[1]),si]);
+  var D=[[1,0,1],[-1,0,1],[0,1,1],[0,-1,1],[1,1,1.414],[1,-1,1.414],[-1,1,1.414],[-1,-1,1.414]],it=0;
+  while(open.length&&it++<60000){var bi=0;for(var q=1;q<open.length;q++)if(open[q][0]<open[bi][0])bi=q;var cur=open[bi][1];open[bi]=open[open.length-1];open.pop();if(closed[cur])continue;closed[cur]=1;if(cur===gi)break;
+    var ci=cur%W,cj=(cur/W)|0;for(var k=0;k<8;k++){var ni=ci+D[k][0],nj=cj+D[k][1];if(!navFree(ni,nj))continue;if(D[k][2]>1&&(!navFree(ci+D[k][0],cj)||!navFree(ci,cj+D[k][1])))continue;var nn=nj*W+ni,ng=G[cur]+D[k][2];if(ng<G[nn]){G[nn]=ng;from[nn]=cur;open.push([ng+Math.hypot(g[0]-ni,g[1]-nj),nn]);}}}
+  if(from[gi]<0&&gi!==si)return null;var cells=[],c=gi;while(c>=0){cells.push([c%W,(c/W)|0]);if(c===si)break;c=from[c];}cells.reverse();
+  var pts=[cells[0]],last=cells[0];for(var m=1;m<cells.length;m++){if(!los(last,cells[m])){last=cells[m-1];pts.push(last);}}pts.push(cells[cells.length-1]);
+  return pts.slice(1).map(function(c){return [N.x0+(c[0]+.5)*N.res,N.z0+(c[1]+.5)*N.res];});}
+function walkToPoint(x,z,endYaw){var p=findPath(FP.pos.x,FP.pos.z,x,z);if(!p||!p.length)return false;FP.path=p;FP.endYaw=endYaw==null?null:endYaw;return true;}
+/* từng khung hình */
+function fpStep(){var now=performance.now(),dt=Math.min(.1,(now-(FP.t||now))/1000);FP.t=now;if(!FP.on||!aptOn||APT.anim)return;
+  var k=FP.keys,fw=(k.w||k.arrowup?1:0)-(k.s||k.arrowdown?1:0),st=(k.d?1:0)-(k.a?1:0),tr=(k.arrowleft?1:0)-(k.arrowright?1:0);
+  if(FP.joy){fw+=-FP.joy.y;st+=FP.joy.x;}
+  if(fw||st||tr)FP.path=null;
+  FP.yaw+=tr*1.9*dt;
+  var spd=WALK_V*(k.shift||FP.run?1.8:1);
+  if(FP.path){var wp=FP.path[0],dx=wp[0]-FP.pos.x,dz=wp[1]-FP.pos.z,dist=Math.hypot(dx,dz);
+    if(dist<.12){FP.path.shift();if(!FP.path.length){FP.path=null;}}
+    else{var dy=angDiff(FP.yaw,yawTo(dx,dz));FP.yaw+=Math.max(-3*dt,Math.min(3*dt,dy*Math.min(1,6*dt)*3));FP.pitch+=(-.06-FP.pitch)*Math.min(1,3*dt);fw=Math.abs(dy)<.6?Math.min(1,dist/.6+.3)*(1-Math.abs(dy)/.6*.6):0;st=0;}}
+  else if(FP.endYaw!=null){var d2=angDiff(FP.yaw,FP.endYaw);FP.yaw+=Math.max(-2.5*dt,Math.min(2.5*dt,d2));if(Math.abs(d2)<.01)FP.endYaw=null;}
+  var sy=Math.sin(FP.yaw),cy=Math.cos(FP.yaw),want=new THREE.Vector3(-sy*fw+cy*st,0,-cy*fw-sy*st);if(want.lengthSq()>1)want.normalize();want.multiplyScalar(spd);
+  FP.vel.lerp(want,1-Math.exp(-9*dt));var mx=FP.vel.x*dt,mz=FP.vel.z*dt,moved=0;
+  if(Math.abs(mx)+Math.abs(mz)>1e-5){if(freeAt(FP.pos.x+mx,FP.pos.z+mz)){FP.pos.x+=mx;FP.pos.z+=mz;moved=Math.hypot(mx,mz);}
+    else if(freeAt(FP.pos.x+mx,FP.pos.z)){FP.pos.x+=mx;moved=Math.abs(mx);FP.vel.z*=.5;}else if(freeAt(FP.pos.x,FP.pos.z+mz)){FP.pos.z+=mz;moved=Math.abs(mz);FP.vel.x*=.5;}else{FP.vel.set(0,0,0);if(FP.path)FP.path=null;}}
+  var walking=moved/dt>.15;FP.sway+=((walking?1:0)-FP.sway)*Math.min(1,6*dt);FP.phase+=moved/STEP*Math.PI;
+  FP.bob=(Math.abs(Math.sin(FP.phase))-.64)*.045*FP.sway;
+  if(walking||tr||FP.endYaw!=null||FP.sway>.01||FP.dirty){FP.dirty=false;fpApply();}}
+FP.sway=0;
+/* nhập liệu */
+window.addEventListener('keydown',function(e){if(!aptOn||!FP.on||/input|select|textarea/i.test(e.target.tagName))return;var k=e.key.toLowerCase();if(['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright','shift'].indexOf(k)>=0){FP.keys[k]=1;e.preventDefault();}});
+window.addEventListener('keyup',function(e){delete FP.keys[e.key.toLowerCase()];});
+window.addEventListener('blur',function(){FP.keys={};});
+function fpPointer(cv){var down=null,last=null;
+  cv.addEventListener('pointerdown',function(e){if(!FP.on)return;down=[e.clientX,e.clientY];last=down;try{cv.setPointerCapture(e.pointerId);}catch(_){}});
+  cv.addEventListener('pointermove',function(e){if(!FP.on||!last)return;var dx=e.clientX-last[0],dy=e.clientY-last[1];last=[e.clientX,e.clientY];FP.yaw+=dx*.0042;FP.pitch=Math.max(-1.25,Math.min(1.25,FP.pitch+dy*.0035));FP.endYaw=null;fpApply();});
+  cv.addEventListener('pointerup',function(e){if(!FP.on||!down)return;var mv=Math.abs(e.clientX-down[0])+Math.abs(e.clientY-down[1]);down=last=null;if(mv<6)fpClick(e);});}
+function fpClick(ev){var A=APT;if(!A.floorMeshes)return;var b=A.rd.domElement.getBoundingClientRect(),v=new THREE.Vector2((ev.clientX-b.left)/b.width*2-1,-(ev.clientY-b.top)/b.height*2+1);WRC.setFromCamera(v,A.cam);WRC.far=60;
+  var h=WRC.intersectObjects(A.floorMeshes.concat(A.solid||[]),false)[0];if(!h||(A.solid||[]).indexOf(h.object)>=0)return;walkToPoint(h.point.x,h.point.z,null);}
+function fpJoy(el){var knob=el.firstChild,id=null,c=null;
+  function set(e){var r=el.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2,dx=(e.clientX-cx)/(r.width/2),dy=(e.clientY-cy)/(r.height/2),L=Math.hypot(dx,dy);if(L>1){dx/=L;dy/=L;}FP.joy={x:dx,y:dy};knob.style.transform='translate('+dx*28+'px,'+dy*28+'px)';}
+  el.addEventListener('pointerdown',function(e){id=e.pointerId;el.setPointerCapture(id);set(e);e.stopPropagation();});
+  el.addEventListener('pointermove',function(e){if(e.pointerId===id)set(e);});
+  function end(e){if(e.pointerId!==id)return;id=null;FP.joy=null;knob.style.transform='';}el.addEventListener('pointerup',end);el.addEventListener('pointercancel',end);}
+/* vào chế độ người tại điểm p, nhìn về l */
+function fpEnter(p,l){FP.pos.set(p[0],0,p[2]);if(APT.nav){var c=nearestFree.apply(0,navCell(p[0],p[2]));if(c){FP.pos.x=APT.nav.x0+(c[0]+.5)*APT.nav.res;FP.pos.z=APT.nav.z0+(c[1]+.5)*APT.nav.res;}}FP.yaw=yawTo(l[0]-p[0],l[2]-p[2]);FP.pitch=-.06;FP.phase=0;FP.bob=0;FP.sway=0;walkSet(true);fpApply();}
 /* ---------- cảnh ngoài cửa sổ: dựng lại khu đất và các tòa quanh căn ---------- */
 function aptContext(m){var A=APT;if(A.ctx){A.sc.remove(A.ctx);A.ctx=null;}var T=m.userData.T,f=m.userData.floor||(m.userData.row&&m.userData.row.floor)||1;if(!T)return;
   T.G.updateMatrixWorld(true);var ctx=new THREE.Group();ctx.matrixAutoUpdate=false;ctx.matrix.copy(new THREE.Matrix4().makeTranslation(0,-(f-1)*FH,0).multiply(new THREE.Matrix4().copy(T.G.matrixWorld).invert()));
@@ -427,9 +485,12 @@ function aptContext(m){var A=APT;if(A.ctx){A.sc.remove(A.ctx);A.ctx=null;}var T=
   scene.children.forEach(function(o){if(o.isMesh&&o.userData.ground)addMesh(o);});
   towers.forEach(function(TT){TT.G.traverse(function(o){if(!o.isMesh||o===m)return;var d=o.userData;if(TT===T&&d.floor===f)return;if(d.T&&d.floor!=null)addMesh(o,d.floor<=PODF?MAT.podium:MAT.arch);});});
   A.sc.add(ctx);A.ctx=ctx;}
-function aptGo(v,instant){var A=APT,fp=!!v.fp,p1=new THREE.Vector3().fromArray(v.p),t1=new THREE.Vector3().fromArray(v.l);if(fp){var d=t1.clone().sub(p1);if(d.lengthSq()<1e-4)d.set(1,0,0);t1=p1.clone().addScaledVector(d.normalize(),.05);}
-  A.ceil.visible=fp;walkSet(fp);if(A.ctx)A.ctx.visible=fp;A.cam.fov=fp?72:45;A.cam.updateProjectionMatrix();[].forEach.call($('#ubar').children,function(b){b.classList.toggle('on',b.textContent===v.n);});
-  if(instant){A.cam.position.copy(p1);A.ct.target.copy(t1);aptLimits(fp);A.need=true;return;}A.ct.enabled=false;A.anim={p0:A.cam.position.clone(),t0:A.ct.target.clone(),p1:p1,t1:t1,s:performance.now(),fp:fp};}
+function aptGo(v,instant){var A=APT;
+  if(v.fp&&FP.on&&!instant&&A.nav&&!v.walk){[].forEach.call($('#ubar').children,function(b){b.classList.toggle('on',b.textContent===v.n);});walkToPoint(v.p[0],v.p[2],yawTo(v.l[0]-v.p[0],v.l[2]-v.p[2]));return;}
+  if(v.fp&&FP.on&&v.walk)return;
+  var fp=!!v.fp,p1=new THREE.Vector3().fromArray(v.p),t1=new THREE.Vector3().fromArray(v.l);if(fp){var d=t1.clone().sub(p1);if(d.lengthSq()<1e-4)d.set(1,0,0);t1=p1.clone().addScaledVector(d.normalize(),.05);}
+  A.ceil.visible=fp;if(!fp)walkSet(false);if(A.ctx)A.ctx.visible=fp;A.cam.fov=fp?72:45;A.cam.updateProjectionMatrix();[].forEach.call($('#ubar').children,function(b){b.classList.toggle('on',b.textContent===v.n);});
+  if(instant){A.cam.position.copy(p1);A.ct.target.copy(t1);if(fp)fpEnter(v.p,v.l);else aptLimits(false);A.need=true;return;}if(FP.on){var fd=new THREE.Vector3();A.cam.getWorldDirection(fd);A.ct.target.copy(A.cam.position).addScaledVector(fd,.05);}A.ct.enabled=false;FP.on=false;FP.path=null;A.anim={p0:A.cam.position.clone(),t0:A.ct.target.clone(),p1:p1,t1:t1,s:performance.now(),fp:fp};}
 function openUnit(m){
   var r=m.userData.row,ut=SC.unitTypes[norm(r.layout)]||SC.unitTypes[norm(r.type)],pr=priceTy(r.price);
   $('#uinfo').innerHTML='<div class="code">'+r.code+'</div><div class="sub">Tòa '+m.userData.T.tw.name+' · Tầng '+r.floor+'</div><span class="legend" style="margin:0"><span><i class="dot" style="background:var(--'+r.status+')"></i>'+STATUS[r.status]+'</span></span>'+
@@ -441,7 +502,7 @@ function openUnit(m){
   var ph=(ut&&ut.photos)||[],pi=-1;$('#uph').style.display=ph.length?'inline-block':'none';$('#uph').textContent='Ảnh phối cảnh';
   $('#uph').onclick=function(){pi++;if(pi>=ph.length){pi=-1;$('#uphoto').style.display='none';this.textContent='Ảnh phối cảnh';return;}$('#uphoto').style.backgroundImage='url('+ph[pi]+')';$('#uphoto').style.display='block';this.textContent='Ảnh '+(pi+1)+'/'+ph.length+' · bấm để xem tiếp';};
   if(UV||(ut&&ut.spec)){if(!APT)initApt();$('#uv').style.display='block';aptOn=true;aptSize();var views=UV?buildVecApt(UV,m.userData.ft):buildApt(ut.spec);if(UV)aptContext(m);else if(APT.ctx){APT.sc.remove(APT.ctx);APT.ctx=null;}
-    views.splice(1,0,{n:'Đi bộ',fp:1,walk:1,p:(views[1]||views[0]).p,l:(views[1]||views[0]).l});
+    var en=APT.entry||views[1]||views[0];views.splice(1,0,{n:'Đi bộ',fp:1,walk:1,p:en.p,l:en.l});
     views.forEach(function(v){var b=document.createElement('button');b.className='btn';b.textContent=v.n;b.onclick=function(){aptGo(v);};bar.appendChild(b);});aptGo(views[0],true);
     $('#unote').textContent=UV?'Mô hình dựng từ bản vẽ CAD của tầng · nội thất theo nét bản vẽ, dạng khối':'Mô hình dựng tự động từ layout "'+ut.name+'" · nội thất dạng khối minh họa';
   }else $('#unote').textContent='Loại căn này chưa có layout 3D.';
