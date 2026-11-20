@@ -35,5 +35,5 @@ examples/lumiere/       dữ liệu mẫu
 MIT. `layout-can-ho` dựa trên [ZWD11/house-plan-designer](https://github.com/ZWD11/house-plan-designer) (MIT). Three.js (MIT). Repo không chứa ảnh của chủ đầu tư.
 
 ## Ghi công tài nguyên
-- Nội thất 3D trong popup căn hộ: [Kenney Furniture Kit](https://kenney.nl/assets/furniture-kit) (CC0), lấy qua repo [openPlan3D](https://github.com/laanlabs/openPlan3D) (MIT).
-- GLTFLoader của Three.js r128 (MIT).
+- Nội thất 3D dựng bằng code trong popup căn hộ (`assets/furniture.js`): chuyển từ [wy51ai/floorplan-3d](https://github.com/wy51ai/floorplan-3d) (MIT, Copyright (c) 2026 wuyi) sang Three.js r128.
+- RoundedBoxGeometry của Three.js r128 (MIT).

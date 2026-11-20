@@ -248,7 +248,7 @@ def cmd_extract(a):
         if max(w, h) * mpp < .45 or max(w, h) * mpp > 4.5:
             continue
         cv2.rectangle(dfill, (x, y), (x + w, y + h), 255, -1)
-        doors.append([int(x), int(y), int(w), int(h)])
+        doors.append([int(x), int(y), int(w), int(h), i])
     win = raster((H, W), list(paths(p, L('window'))), R, ox, oy, 2)
     gla = raster((H, W), list(paths(p, L('glass'))), R, ox, oy, 2, True)
     # lấp ô cửa đi trong tường (khe <= 1,5 m dọc theo phương tường) để tách phòng; vách mở rộng hơn vẫn thông
@@ -309,7 +309,7 @@ def cmd_extract(a):
             rooms[rid]['lx'], rooms[rid]['ly'] = X, Y
     # --- đồ thị phòng nối qua cửa ---
     adj = {r: set() for r in rooms}
-    for (x, y, w, h) in doors:
+    for (x, y, w, h, _lab) in doors:
         g = px(.32)
         sub = rlab[max(0, y - g):y + h + g, max(0, x - g):x + w + g]
         ids = set(int(v) for v in np.unique(sub) if int(v) in rooms)
@@ -379,6 +379,46 @@ def cmd_extract(a):
     codes = json.load(open(a.codes, encoding='utf-8')) if a.codes else {}
     # --- hình học 3D từng căn ---
     walls3d = walls | cv2.morphologyEx(part, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (px(.15), px(.15))))
+
+    # cánh cửa: hình chữ nhật mảnh dài 0,55–1,3 m trong lớp cửa đi (vẽ ở tư thế mở)
+    leaves = []
+    dm2 = cv2.morphologyEx(dm, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (px(.08), px(.08))))
+    for c_ in cv2.findContours(dm2, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[0]:
+        (cx_, cy_), (rw_, rh_), an_ = cv2.minAreaRect(c_)
+        Lp, Tp = max(rw_, rh_), min(rw_, rh_)
+        if not (.55 <= Lp * mpp <= 1.3 and Tp * mpp <= .13):
+            continue
+        t_ = math.radians(an_ if rw_ >= rh_ else an_ + 90)
+        ax_ = np.array([math.cos(t_), math.sin(t_)]) * Lp / 2
+        leaves.append((np.array([cx_, cy_]) - ax_, np.array([cx_, cy_]) + ax_))
+    def leaf_geom(e1, e2):
+        """Bản lề là đầu cánh mà từ đó, theo phương vuông góc với cánh, có một khoảng trống dài bằng cánh (ô cửa)
+        kết thúc ở bậu tường đối diện. Cánh khi đóng nằm trên khoảng trống đó."""
+        wm = walls3d > 0
+        def wall_at(q, r_m=.1):
+            r_ = px(r_m)
+            xa, xb, ya, yb = max(0, int(q[0]) - r_), min(W, int(q[0]) + r_ + 1), max(0, int(q[1]) - r_), min(H, int(q[1]) + r_ + 1)
+            return xa < xb and ya < yb and bool(wm[ya:yb, xa:xb].any())
+        Lp = np.linalg.norm(e2 - e1)
+        found = []
+        for hinge, tip in ((e1, e2), (e2, e1)):
+            ax = (tip - hinge) / Lp
+            perp = np.array([-ax[1], ax[0]])
+            for s_ in (1, -1):
+                gap = not any(wall_at(hinge + perp * s_ * Lp * t, .04) for t in (.35, .55, .75))
+                jamb = wall_at(hinge + perp * s_ * Lp * 1.05, .14) and wall_at(hinge - perp * s_ * px(.12), .1)
+                if gap and jamb:
+                    found.append((hinge, tip, hinge + perp * s_ * Lp))
+        if len(found) != 1:
+            return None
+        hinge, tip, closed = found[0]
+        return dict(h=[round(float(v), 1) for v in hinge], c=[round(float(v), 1) for v in closed], o=[round(float(v), 1) for v in tip])
+    door_list = []
+    for e1, e2 in leaves:
+        g_ = leaf_geom(e1, e2)
+        if g_:
+            mid = (np.array(g_['h']) + np.array(g_['c'])) / 2
+            door_list.append(([int(mid[0]), int(mid[1]), 0, 0], g_))
     wall_polys_all = contours_to_polys(walls & cv2.dilate(foot, np.ones((5, 5), np.uint8)), 1.0, px(.08) ** 2)
     fur = raster((H, W), list(paths(p, L('furniture'))), R, ox, oy, 1)
     fur_t = raster((H, W), list(paths(p, L('furniture_tall'))), R, ox, oy, 1)
@@ -446,7 +486,8 @@ def cmd_extract(a):
             rms.append(dict(id=r, name=rooms[r]['name'], x=round(rooms[r].get('lx', rooms[r]['cx'])), y=round(rooms[r].get('ly', rooms[r]['cy'])),
                             vx=vx, vy=vy, va=round(best_a, 3), area=rooms[r]['area'], poly=rpoly))
         out_units.append(dict(code=code, num=num, poly=u['poly'], area=u['area'], rooms=rms,
-                              vec=dict(walls=wpoly, win=[s for s in win_segs if inside(s)], glass=[s for s in gla_segs if inside(s)], furn=furn)))
+                              vec=dict(walls=wpoly, win=[s for s in win_segs if inside(s)], glass=[s for s in gla_segs if inside(s)], furn=furn,
+                                       doors=[g_ for d_, g_ in door_list if g_ and mk[min(H - 1, d_[1] + d_[3] // 2), min(W - 1, d_[0] + d_[2] // 2)] > 0])))
     # ranh khối nhà vẽ chung cho nhiều tầng: nếu lớn hơn hẳn diện tích sàn ghi trên bản vẽ (tầng giật cấp, sân thượng),
     # thu lại theo phần có căn + khu chung + lõi
     m_area = re.search(r'DIỆN TÍCH SÀN:\s*([\d.,]+)', p.get_text())
@@ -471,7 +512,7 @@ def cmd_extract(a):
     title = re.findall(r'MẶT BẰNG[^\n|]*', p.get_text())
     res = dict(source=os.path.basename(a.pdf), page=a.page, title=title[0].strip() if title else '', floors=floors_from_title(title[0]) if title else None,
                w=W, h=H, mPerPx=mpp, scale=a.scale, footprint=fp, core=core_p, units=out_units,
-               common=[dict(name=rooms[r]['name'], area=rooms[r]['area']) for r in common], walls=wall_polys_all,
+               common=[dict(name=rooms[r]['name'], area=rooms[r]['area']) for r in common], walls=wall_polys_all, doors_raw=doors,
                loose=[dict(id=r, name=rooms[r]['name'], area=rooms[r]['area'], x=round(rooms[r]['cx']), y=round(rooms[r]['cy']))
                       for r in rooms if r not in common and not any(r in u for u in units)])
     json.dump(res, open(os.path.join(a.out, 'floor.json'), 'w', encoding='utf-8'), ensure_ascii=False)

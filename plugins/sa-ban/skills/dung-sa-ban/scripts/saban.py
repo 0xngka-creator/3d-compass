@@ -670,21 +670,10 @@ def cmd_build(a):
     three = open(os.path.join(ASSETS, 'three.min.js'), encoding='utf-8').read()
     orbit = open(os.path.join(ASSETS, 'OrbitControls.js'), encoding='utf-8').read()
     has_vec = any(u.get('vec') for t in towers for ft in t['floorTypes'] for u in ft['units'])
-    idir = os.path.join(ASSETS, 'interior')
-    gltf = open(os.path.join(ASSETS, 'GLTFLoader.js'), encoding='utf-8').read() if has_vec else ''
-    interior = ''
-    if has_vec and a.single:
-        data = {}
-        for kind, mime in (('models', 'model/gltf-binary'), ('tex', 'image/webp')):
-            if not os.path.isdir(os.path.join(idir, kind)):
-                continue
-            for fn in sorted(os.listdir(os.path.join(idir, kind))):
-                if fn.endswith(('.glb', '.webp')):
-                    data[kind + '/' + fn] = 'data:%s;base64,%s' % (mime, base64.b64encode(open(os.path.join(idir, kind, fn), 'rb').read()).decode())
-        interior = '<script>window.INTERIOR=%s;</script>' % json.dumps(dict(data=data))
+    furn = open(os.path.join(ASSETS, 'furniture.js'), encoding='utf-8').read() if has_vec else ''
     if a.single:
         inject = '<script>%s</script>\n<script>%s</script>\n%s<script>window.SCENE=%s;</script>' % (
-            three, orbit, ('<script>%s</script>\n%s\n' % (gltf, interior)) if has_vec else '',
+            three, orbit, ('<script>%s</script>\n' % furn) if has_vec else '',
             json.dumps(scene, ensure_ascii=False).replace('</', '<\\/'))
     else:
         shutil.copyfile(os.path.join(ASSETS, 'three.min.js'), os.path.join(out, 'three.min.js'))
@@ -693,11 +682,8 @@ def cmd_build(a):
             json.dump(scene, f, ensure_ascii=False)
         inject = '<script src="three.min.js"></script>\n<script src="OrbitControls.js"></script>'
         if has_vec:
-            shutil.copyfile(os.path.join(ASSETS, 'GLTFLoader.js'), os.path.join(out, 'GLTFLoader.js'))
-            if os.path.exists(os.path.join(out, 'interior')):
-                shutil.rmtree(os.path.join(out, 'interior'))
-            shutil.copytree(idir, os.path.join(out, 'interior'))
-            inject += '\n<script src="GLTFLoader.js"></script>\n<script>window.INTERIOR={base:"interior/"};</script>'
+            shutil.copyfile(os.path.join(ASSETS, 'furniture.js'), os.path.join(out, 'furniture.js'))
+            inject += '\n<script src="furniture.js"></script>'
     html = html.replace('<!--SABAN_LIBS-->', inject)
     with open(os.path.join(out, 'index.html'), 'w', encoding='utf-8') as f:
         f.write(html)

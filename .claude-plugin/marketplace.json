@@ -8,11 +8,11 @@
       "name": "sa-ban",
       "source": "./plugins/sa-ban",
       "description": "Dựng sa bàn 3D bán hàng chung cư từ ảnh mặt bằng và bảng hàng.",
-      "version": "0.4.2"
+      "version": "0.5.0"
     }
   ],
   "metadata": {
     "description": "Plugin dựng sa bàn 3D bất động sản cho Claude",
-    "version": "0.4.2"
+    "version": "0.5.0"
   }
 }
